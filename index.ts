@@ -53,7 +53,7 @@ const getPosts = async () => {
   // - a visible browser (`headless: false` - easier to debug because you'll see the browser in action)
   // - no default viewport (`defaultViewport: null` - website page will in full width and height)
   const browser = await puppeteer.launch({
-    headless: (process.env.SIRIUS_SCRAPE_HEADLESS ?? "true") == "false" ? false : true,
+    headless: (process.env["SIRIUS_SCRAPE_HEADLESS"] ?? "true") == "false" ? false : true,
     defaultViewport: null,
     args: ['--no-sandbox', '--disable-setuid-sandbox'],
   });
@@ -126,7 +126,7 @@ const getPosts = async () => {
           console.log(JSON.stringify({ title, genre, body, sender, date }))
           db.query("INSERT INTO posts (title,genre,body,sender,date) values (?1,?2,?3,?4,?5)").run(title, genre, body, sender, date)
           console.error("inserted new", title)
-          if (process.env.SIRIUS_SCRAPE_SEND_DISCORD && discordwebhook) {
+          if (process.env["SIRIUS_SCRAPE_SEND_DISCORD"] && discordwebhook) {
             await send_discord_message({ genre, title, body })
           }
         } else {
