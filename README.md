@@ -7,7 +7,13 @@
 
 依存関係をダウンロード：
 ```bash
-bun install
+$ bun install
+```
+
+認証情報の作成：
+SIRIUSの認証情報を入れる
+```bash
+$ cp secrets-sample.json secrets.json
 ```
 
 ## 実行

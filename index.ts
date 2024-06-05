@@ -1,5 +1,5 @@
 import puppeteer from "puppeteer";
-import { user, password, otp } from "./secrets.json"
+import { user, password, otp, discordwebhook } from "./secrets.json"
 import { authenticator } from 'otplib';
 import { Database } from "bun:sqlite";
 
@@ -20,12 +20,40 @@ function initialize_db() {
   return db
 }
 
+type MessageContext = { genre: string, title: string, body: string };
+
+async function send_discord_message({ genre, title, body }: MessageContext) {
+  const color = genre.includes("全") ? 15607317 : genre.includes("府") ? 389400 : genre.includes("小") ? 41968 : 10658466;
+  const res = await fetch(discordwebhook, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      "content": "",
+      "embeds": [
+        {
+          "title": title,
+          "description": body,
+          "color": color
+        }
+      ],
+      "username": "SIRIUS " + genre,
+      "attachments": []
+    })
+  })
+  if (res.status === 200) {
+    console.error("discord send success")
+  } else {
+    console.error("discord send error", res.status, await res.text())
+  }
+  await sleep(1000)
+}
+
 const getPosts = async () => {
   // Start a Puppeteer session with:
   // - a visible browser (`headless: false` - easier to debug because you'll see the browser in action)
   // - no default viewport (`defaultViewport: null` - website page will in full width and height)
   const browser = await puppeteer.launch({
-    headless: false,
+    headless: (process.env.SIRIUS_SCRAPE_HEADLESS ?? "true") == "false" ? false : true,
     defaultViewport: null,
     args: ['--no-sandbox', '--disable-setuid-sandbox'],
   });
@@ -78,7 +106,7 @@ const getPosts = async () => {
     const post_count = await page.$$eval("table#auto-table-2 a", e => e.length)
     for (let post_index = 0; post_index < post_count; post_index++) {
       try {
-        const { link, genre } = await page.$$eval("table#auto-table-2 a", (es, i) => ({ link: es[i].href, genre: es[i].innerText.trim() }), post_index)
+        const { link } = await page.$$eval("table#auto-table-2 a", (es, i) => ({ link: es[i].href, genre: es[i].innerText.trim() }), post_index)
         await page.goto(link)
       } catch (e) {
         console.error("could not jump to link", genre_index, post_index)
@@ -86,17 +114,21 @@ const getPosts = async () => {
         continue
       }
       try {
+        // get post information
         const title = await page.$eval("span.keiji-title", e => e.innerText.trim())
-        const genre = await page.$eval("span.keiji-t-genre", e => e.innerText.trim())
+        const genre = await page.$eval("span.keiji-t-genre", e => e.innerText.trim().replaceAll(/[\[\]]/g, ""))
         const body = await page.$eval("div.keiji-naiyo", e => e.innerText.trim())
         const sender = await page.$$eval("table#auto-table-2 td", e => e[0].innerText.trim())
         const date = await page.$$eval("table#auto-table-2 td", e => e[1].innerText.trim())
         const same_content_count = db.query("select count(id) from posts where title = ?1 and date = ?2").get(title, date)
-        // console.error("count", count)
+
         if (same_content_count && typeof same_content_count == "object" && "count(id)" in same_content_count && same_content_count["count(id)"] == 0) {
           console.log(JSON.stringify({ title, genre, body, sender, date }))
           db.query("INSERT INTO posts (title,genre,body,sender,date) values (?1,?2,?3,?4,?5)").run(title, genre, body, sender, date)
           console.error("inserted new", title)
+          if (process.env.SIRIUS_SCRAPE_SEND_DISCORD && discordwebhook) {
+            await send_discord_message({ genre, title, body })
+          }
         } else {
           console.error("already inserted", title)
         }
